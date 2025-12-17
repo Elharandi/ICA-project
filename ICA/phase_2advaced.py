@@ -1,3 +1,5 @@
+import sys
+sys.stdout = sys.__stdout__
 import sqlite3
 import matplotlib.pyplot as plt
 
@@ -12,15 +14,12 @@ def get_db_connection():
 
 '''
 ADVANCED ANALYSIS 1: Seasonal Comparison
-Goal: Compare the "Climate Curve" of all cities on one graph.
-Why: Identifies which cities have similar seasonal patterns vs different ones.
 '''
 def plot_all_cities_monthly_temp_comparison(year):
     conn = get_db_connection()
     if not conn: return
     cursor = conn.cursor()
 
-    # Query: Calculate average monthly temperature for every city
     query = """
     SELECT cities.name, strftime('%m', date) as month, AVG(mean_temp)
     FROM daily_weather_entries
@@ -38,21 +37,23 @@ def plot_all_cities_monthly_temp_comparison(year):
         print("No data found for seasonal analysis.")
         return
 
-    
     city_data = {}
     for row in results:
         city = row[0]
         temp = row[2]
+        
+        ### FIX: Handle None values if a month has no data
+        if temp is None: temp = 0 
+        
         if city not in city_data:
             city_data[city] = []
         city_data[city].append(temp)
 
-    # Plotting
     plt.figure(figsize=(12, 7))
     months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec']
     
     for city, temps in city_data.items():
-        
+        # Ensure x and y match length
         current_months = months[:len(temps)] 
         plt.plot(current_months, temps, marker='o', label=city)
 
@@ -65,16 +66,12 @@ def plot_all_cities_monthly_temp_comparison(year):
 
 '''
 ADVANCED ANALYSIS 2: Weather Volatility Index
-Goal: Identify which city has the most "unstable" daily weather.
-Logic: We calculate the average difference between the Daily Max and Daily Min.
-       (High difference = Hot days/Cold nights = Volatile. Low difference = Stable).
 '''
 def plot_temperature_volatility_comparison():
     conn = get_db_connection()
     if not conn: return
     cursor = conn.cursor()
 
-    # Query: Avg(Max - Min) per city
     query = """
     SELECT cities.name, AVG(max_temp - min_temp) as volatility
     FROM daily_weather_entries
@@ -87,8 +84,15 @@ def plot_temperature_volatility_comparison():
     results = cursor.fetchall()
     conn.close()
 
-    cities = [row[0] for row in results]
-    volatility = [row[1] for row in results]
+    # Filter out None values
+    clean_results = [row for row in results if row[1] is not None]
+    
+    if not clean_results:
+        print("Not enough data for volatility analysis.")
+        return
+
+    cities = [row[0] for row in clean_results]
+    volatility = [row[1] for row in clean_results]
 
     plt.figure(figsize=(10, 6))
     bars = plt.bar(cities, volatility, color='purple', alpha=0.7)
@@ -100,11 +104,7 @@ def plot_temperature_volatility_comparison():
     plt.show()
 
 '''
-ADVANCED ANALYSIS 3: Rainfall Pattern Analysis (Frequency vs Intensity)
-Goal: Distinguish between "Cities that rain often" vs "Cities that storm".
-Logic: 
-   - X Axis: How many days did it rain? (Frequency)
-   - Y Axis: On a rainy day, how much fell? (Intensity)
+ADVANCED ANALYSIS 3: Rainfall Pattern Analysis
 '''
 def plot_rain_pattern_scatter():
     conn = get_db_connection()
@@ -128,15 +128,32 @@ def plot_rain_pattern_scatter():
 
     if not results: return
 
-    cities = [row[0] for row in results]
-    days = [row[1] for row in results]
-    intensity = [row[2] for row in results]
+    # Prepare lists
+    cities = []
+    days = []
+    intensity = []
+
+    for row in results:
+        city_name = row[0]
+        r_days = row[1]
+        r_int = row[2]
+
+        ### FIX: CRITICAL ERROR PREVENTION
+        # If it never rained (r_days = 0), then r_int will be None (division by zero in SQL).
+        # We must replace None with 0.0 to prevent Matplotlib crash.
+        if r_int is None:
+            r_int = 0.0
+        
+        cities.append(city_name)
+        days.append(r_days)
+        intensity.append(r_int)
 
     plt.figure(figsize=(10, 6))
     plt.scatter(days, intensity, s=100, c='blue', alpha=0.6, edgecolors='black')
 
     # Annotate each dot with the city name
     for i, city in enumerate(cities):
+        # This is where your code was crashing (coordinate cannot be None)
         plt.annotate(city, (days[i], intensity[i]), xytext=(5, 5), textcoords='offset points')
 
     plt.xlabel('Number of Rainy Days (Frequency)')
@@ -146,11 +163,9 @@ def plot_rain_pattern_scatter():
     plt.show()
 
 if __name__ == "__main__":
-    # 1. Compare Seasonal Trends (Using 2020 as example year)
-    plot_all_cities_monthly_temp_comparison(2020)
-    
-    # 2. Compare Stability (Daily Temp Swing)
+    # Note: Ensure you check a year where data actually exists!
+    # If 2020 has no data for new cities, try 2024.
+    print("Running Advanced Analysis...")
+    plot_all_cities_monthly_temp_comparison(2024) 
     plot_temperature_volatility_comparison()
-    
-    # 3. Compare Rain Patterns
     plot_rain_pattern_scatter()
